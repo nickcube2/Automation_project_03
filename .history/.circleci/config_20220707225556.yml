@@ -10,13 +10,18 @@ commands:
         type: string
     steps:
       - run:
-          name: Destroy udapeople environments
+          name: Destroy front-end cloudformation stack
           when: on_fail
           command: |
-            aws cloudformation delete-stack -- stack-name "udapeople-backend-${CIRCLE_WORKFLOW_ID:0:7}"
-            aws s3 rm s3://udapeople-${CIRCLE_WORKFLOW_ID:0:7} --recursive
-            aws cloudformation delete-stack --stack-name "udapeople-frontend-${CIRCLE_WORKFLOW_ID:0:7}"
-            
+            aws cloudformation delete-stack --stack-name udapeople-frontend-<<parameters.workflow_id>>
+            # Delete files uploaded from the s3 bucket.
+            aws s3 rm s3://udapeople-<<parameters.workflow_id>> --recursive
+      - run:
+          name: Destroy back-end cloudformation stack
+          when: on_fail
+          command: |
+            aws cloudformation delete-stack --stack-name udapeople-backend-<<parameters.workflow_id>>
+
 
 jobs:
   build-frontend:
@@ -114,16 +119,9 @@ jobs:
       - image: amazon/aws-cli
     steps:
       - checkout
-      - run: 
-          name: Install dependencies
-          command: |            
-             yum -y install sudo
-             yum -y install tar
-             yum -y install gzip
-             yum install -y curl
-             yum -y update upgrade
-             pwd
-             ls -la      
+      - run: yum install -y tar gzip
+      - attach_workspace:
+          at: ~/
       - run:
           name: Ensure back-end infrastructure exists
           command: |
@@ -133,7 +131,7 @@ jobs:
               --parameter-overrides ID="${CIRCLE_WORKFLOW_ID:0:7}"  \
               --tags project=udapeople
       - run:
-          name: Ensure front-end infrastructure exist 
+          name: Ensure front-end infrastructure exists
           command: |
             aws cloudformation deploy \
               --template-file .circleci/files/frontend.yml \
@@ -142,25 +140,17 @@ jobs:
               --tags project=udapeople
       - run:
           name: Add back-end ip to ansible inventory
+          # Fetch the public IP of the EC2 instance and append it to the inventory
           command: |
-# cd ./.circleci/ansible
-# aws ec2 describe-instances \
-# --query 'Reservations[*].Instances[*].PublicIpAddress' \
-# --filters "Name=tag:Name,Values=udapeople-backend-${CIRCLE_WORKFLOW_ID:0:7}" \
-# --output text >> inventory.txt
-# cat inventory.txt
-            BACKEND_PUBLIC_IP=$(aws ec2 describe-instances \
-              --filters "Name=tag:Name,Values=backend-${CIRCLE_WORKFLOW_ID:0:7}" \
-              --query 'Reservations[*].Instances[*].PublicIpAddress' \
+            export BACKEND_IP=$(aws ec2 describe-instances \
+              --filters "Name=tag:project,Values=udapeople" \
+              --query "Reservations[*].Instances[*].PublicIpAddress" \
               --output text)
-            echo $BACKEND_PUBLIC_IP >> .circleci/ansible/inventory.txt
-            cat .circleci/ansible/inventory.txt
+            echo ${BACKEND_IP} > .circleci/ansible/inventory.txt
       - persist_to_workspace:
           root: ~/
           paths:
-            - ./.circleci/ansible/inventory.txt  
-
-      - destroy-environment      
+            - project/.circleci/ansible/inventory.txt  
 
   configure-infrastructure:
     docker:
@@ -168,7 +158,7 @@ jobs:
     steps:
       - checkout
       - add_ssh_keys:
-          fingerprints: ["aa:82:60:11:64:ee:9c:ff:24:51:ea:d0:7b:40:6b:97"]
+          fingerprints: $FINGERPRINT_ID
       - attach_workspace:
           at: ~/
       - run:
@@ -176,27 +166,24 @@ jobs:
           working_directory: ./.circleci/ansible
           command: |
             apk add --update ansible
-            ansible --version
-            pip3 install --upgrade pip
-            pip3 install awscli
-            aws --version
       - run:
           name: Configure server
           command: |
-            cd ./.circleci/ansible
+            cd .circleci/ansible
             cat inventory.txt
             ansible-playbook -i inventory.txt configure-server.yml
-
       - destroy-environment:
           workflow_id: ${CIRCLE_WORKFLOW_ID:0:7}
+      - slack/notify:
+          channel: $SLACK_DEFAULT_CHANNEL
+          event: fail
+          template: basic_fail_1
 
   run-migrations:
     docker:
       - image: circleci/node:13.8.0
     steps:
       - checkout
-      - restore_cache:
-          keys: [build-infra, frontend-build, backend-build]
       - run:
           name: Run migrations
           command: |
@@ -211,17 +198,13 @@ jobs:
               curl --insecure https://kvdb.io/4dvwbV8X8SViv5GWGTZEJo/migration_${CIRCLE_WORKFLOW_ID:0:7}  -d '1'
             fi    
       - destroy-environment:
-          workflow_id: ${CIRCLE_WORKFLOW_ID:0:7}   
-      - revert-migrations:
-          workflowID: ${CIRCLE_WORKFLOW_ID:0:7}
+          workflow_id: ${CIRCLE_WORKFLOW_ID:0:5      
 
   deploy-frontend:
     docker:
       - image: python:3.7-alpine3.11
     steps:
       - checkout
-      - attach_workspace:
-          at: ~/
       - run:
           name: Install dependencies
           command: |
@@ -238,10 +221,7 @@ jobs:
       - run:
           name: Get backend url
           command: |
-            BACKEND_PUBLIC_IP=$(aws ec2 describe-instances \
-              --filters "Name=tag:Name,Values=backend-${CIRCLE_WORKFLOW_ID:0:7}" \
-             --query 'Reservations[*].Instances[*].PublicIpAddress' \
-              --output text)
+            export BACKEND_IP=$(aws cloudformation list-exports --query "Exports[?Name=='${CIRCLE_WORKFLOW_ID:0:7}-PublicIp'].Value" --no-paginate --output text)
             export API_URL="http://${BACKEND_IP}:3030"
             echo "API_URL = ${API_URL}"
             echo API_URL="http://${BACKEND_IP}:3030" >> "frontend/.env"
@@ -256,8 +236,6 @@ jobs:
             aws s3 cp dist s3://udapeople-${CIRCLE_WORKFLOW_ID:0:7} --recursive
       - destroy-environment:
           workflow_id: ${CIRCLE_WORKFLOW_ID:0:7}
-      - revert-migrations:
-          workflowID: ${CIRCLE_WORKFLOW_ID:0:7}          
 
   deploy-backend:
     docker:
@@ -265,7 +243,8 @@ jobs:
     steps:
       - checkout
       - add_ssh_keys:
-          fingerprints: ["aa:82:60:11:64:ee:9c:ff:24:51:ea:d0:7b:40:6b:97"]
+          fingerprints:
+            ["aa:82:60:11:64:ee:9c:ff:24:51:ea:d0:7b:40:6b:97"]
       - attach_workspace:
           at: ~/
       - run:
@@ -302,7 +281,7 @@ jobs:
       - run:
           name: ansible playbook
           command: |
-            cd ./.circleci/ansible
+            cd .circleci/ansible
             echo "Contents  of the inventory.txt file is -------"
             cat inventory.txt
             ansible-playbook -i inventory.txt deploy-backend.yml
@@ -335,11 +314,7 @@ jobs:
       - run:
           name: Backend smoke test.
           command: |
-            export BACKEND_IP=$(aws ec2 describe-instances \
-              --query 'Reservations[*].Instances[*].PublicIpAddress' \
-              --filters "Name=tag:project,Values=udapeople-backend-${CIRCLE_WORKFLOW_ID:0:7}" \
-              --output text)
-  # export BACKEND_IP=$(aws cloudformation list-exports --query "Exports[?Name=='${CIRCLE_WORKFLOW_ID:0:7}-PublicIp'].Value" --no-paginate --output text)
+            export BACKEND_IP=$(aws cloudformation list-exports --query "Exports[?Name=='${CIRCLE_WORKFLOW_ID:0:7}-PublicIp'].Value" --no-paginate --output text)
             export API_URL="http://${BACKEND_IP}:3030"
             echo "${API_URL}"
             if curl "${API_URL}/api/status" | grep "ok"
