@@ -162,12 +162,11 @@ jobs:
 
   deploy-infrastructure:
     docker:
-      - image: cimg/base:stable
+      # Docker image here that supports AWS CLI
     steps:
-      - checkout
-      - install_awscli
+      # Checkout code from git
       - run:
-          name: Ensure backend infrastructure exists
+          name: Ensure back-end infrastructure exists
           command: |
             aws cloudformation deploy \
               --template-file .circleci/files/backend.yml \
@@ -176,24 +175,18 @@ jobs:
               --tags project=udapeople
 
       - run:
-          name: Ensure frontend infrastructure exist
+          name: Ensure front-end infrastructure exist
           command: |
             aws cloudformation deploy \
               --template-file .circleci/files/backend.yml \
               --stack-name "udapeople-frontend-${CIRCLE_WORKFLOW_ID:0:7}" \
               --parameter-overrides ID="${CIRCLE_WORKFLOW_ID:0:7}"  \
               --tags project=udapeople
-
       - run:
           name: Add back-end ip to ansible inventory
           command: |
-            BACKEND_PUBLIC_IP=$(aws ec2 describe-instances \
-              --filters "Name=tag:Name,Values=backend-${CIRCLE_WORKFLOW_ID:0:7}" \
-              --query 'Reservations[*].Instances[*].PublicIpAddress' \
-              --output text)
-            echo $BACKEND_PUBLIC_IP >> .circleci/ansible/inventory.txt
-            cat .circleci/ansible/inventory.txt
-
+            # Your code here
+            exit 1
       - persist_to_workspace:
           root: ~/
           paths:
@@ -363,7 +356,7 @@ workflows:
           requires: [test-frontend, test-backend, scan-frontend, scan-backend]
           filters:
             branches:
-              only: [master]
+              only: [test-feature-branch]
       # - configure-infrastructure:
       #     requires: [deploy-infrastructure]
       # - run-migrations:
