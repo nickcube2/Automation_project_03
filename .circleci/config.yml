@@ -297,14 +297,12 @@ jobs:
           command: |
             cd backend
             npm install
-            npm run build
       - run:
           name: Package Backend
           command: |
             cd backend
             npm run build
             tar -czf artifact.tar.gz dist/* package
-            
             cd ..
             cp backend/artifact.tar.gz .circleci/ansible/roles/deploy/files
       - run:
@@ -317,10 +315,8 @@ jobs:
             cd .circleci/ansible
             cat inventory.txt
             ansible-playbook -i inventory.txt deploy-backend.yml
-
       - destroy-environment
       - revert-migrations
-
 
 #   smoke-test:
 #     docker:
