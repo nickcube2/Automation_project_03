@@ -186,6 +186,7 @@ jobs:
               --stack-name "udapeople-frontend-${CIRCLE_WORKFLOW_ID:0:7}" \
               --parameter-overrides ID="${CIRCLE_WORKFLOW_ID:0:7}"  \
               --tags project=udapeople
+
       - run:
           name: Add back-end ip to ansible inventory
           command: |
@@ -195,6 +196,7 @@ jobs:
               --output text)
             echo $BACKEND_PUBLIC_IP >> .circleci/ansible/inventory.txt
             cat .circleci/ansible/inventory.txt
+
       - persist_to_workspace:
           root: ~/
           paths:
@@ -257,6 +259,7 @@ jobs:
           command: |
             cd frontend
             npm install
+
       - run:
           name: Get backend url
           command: |
@@ -296,6 +299,7 @@ jobs:
           command: |
             cd backend
             npm install
+
       - run:
           name: Package Backend
           command: |
@@ -305,6 +309,7 @@ jobs:
             
             cd ..
             cp backend/artifact.tar.gz .circleci/ansible/roles/deploy/files
+
       - run:
           name: Deploy backend
           command: |
