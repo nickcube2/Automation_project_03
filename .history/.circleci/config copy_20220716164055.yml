@@ -199,7 +199,7 @@ jobs:
           command: |
             if grep -q "has been executed successfully." ~/project/backend/migrations_dump.txt
             then
-              curl --insecure https://kvdb.io/TGcc9FndPnYFSG9ADq12gV/migration_${CIRCLE_WORKFLOW_ID:0:7}  -d '1'
+              curl --insecure https://kvdb.io/4dvwbV8X8SViv5GWGTZEJo/migration_${CIRCLE_WORKFLOW_ID:0:7}  -d '1'
             fi    
       - destroy-environment:
           workflow_id: ${CIRCLE_WORKFLOW_ID:0:7}   
@@ -319,14 +319,6 @@ jobs:
             && rm -rf /var/cache/apk/*
             apk add --update npm
             apk add curl
-
-      - run:
-          name:  Get Backend Url.
-          command: |
-            export BACKEND_IP=$(aws ec2 describe-instances \
-              --query 'Reservations[*].Instances[*].PublicIpAddress' \
-              --filters "Name=tag:project,Values=udapeople-backend-${CIRCLE_WORKFLOW_ID:0:7}" \
-              --output text)
       - run:
           name:  Backend smoke test.
           command: |
